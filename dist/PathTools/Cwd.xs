@@ -81,10 +81,14 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
 	size_t left_len, resolved_len;
 	unsigned symlinks;
 	int serrno;
+        int khwerrno;
 	char left[MAXPATHLEN], next_token[MAXPATHLEN];
+        dTHX;
 
 	serrno = errno;
 	symlinks = 0;
+
+        DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: input=%s\n", __FILE__, __LINE__, path));
 	if (path[0] == '/') {
             resolved[0] = '/';
             resolved[1] = '\0';
@@ -92,15 +96,19 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                     return (resolved);
             resolved_len = 1;
             left_len = my_strlcpy(left, path + 1, sizeof(left));
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: left_len=%d, left=%s\n", __FILE__, __LINE__, (unsigned) left_len, left));
 	} else {
             if (getcwd(resolved, MAXPATHLEN) == NULL) {
+                DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Couldn't getcwd(), MAX=%d\n", __FILE__, __LINE__, MAXPATHLEN));
                 my_strlcpy(resolved, ".", MAXPATHLEN);
                 return (NULL);
             }
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: getcwd() returned=%s\n", __FILE__, __LINE__, resolved));
             resolved_len = strlen(resolved);
             left_len = my_strlcpy(left, path, sizeof(left));
 	}
 	if (left_len >= sizeof(left) || resolved_len >= MAXPATHLEN) {
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long left_len%d, sizeof(left)=%d, resolved_len=%d, MAX=%d\n", __FILE__, __LINE__, (unsigned) left_len, (unsigned) sizeof(left), (unsigned) resolved_len, MAXPATHLEN));
             errno = ENAMETOOLONG;
             return (NULL);
 	}
@@ -109,6 +117,7 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
 	 * Iterate over path components in 'left'.
 	 */
 	while (left_len != 0) {
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: left=%s\n", __FILE__, __LINE__, left));
             /*
              * Extract the next path component and adjust 'left'
              * and its length.
@@ -116,16 +125,19 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
             p = strchr(left, '/');
             s = p ? p : left + left_len;
             if ((STRLEN)(s - left) >= (STRLEN)sizeof(next_token)) {
+                DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long: sizeof(s-left)=%d, sizeof(next_token)=%d, MAX=%d\n", __FILE__, __LINE__, (unsigned) sizeof(s-left), (unsigned) sizeof(next_token), MAXPATHLEN));
                 errno = ENAMETOOLONG;
                 return (NULL);
             }
             memcpy(next_token, left, s - left);
             next_token[s - left] = '\0';
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: cur_token=%s\n", __FILE__, __LINE__, next_token));
             left_len -= s - left;
             if (p != NULL)
                 memmove(left, s + 1, left_len + 1);
             if (resolved[resolved_len - 1] != '/') {
                 if (resolved_len + 1 >= MAXPATHLEN) {
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long: %d, MAX=%d\n", __FILE__, __LINE__, (unsigned) resolved_len, MAXPATHLEN));
                     errno = ENAMETOOLONG;
                     return (NULL);
                 }
@@ -156,7 +168,9 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
              * there are no more path components left.
              */
             resolved_len = my_strlcat(resolved, next_token, MAXPATHLEN);
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: current_resolved=%s\n", __FILE__, __LINE__, resolved));
             if (resolved_len >= MAXPATHLEN) {
+                DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: too long, %d >= %d\n", __FILE__, __LINE__, (unsigned) resolved_len, MAXPATHLEN));
                 errno = ENAMETOOLONG;
                 return (NULL);
             }
@@ -165,23 +179,32 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                 struct stat sb;
                 if (lstat(resolved, &sb) != 0) {
                     if (errno == ENOENT && p == NULL) {
+                        DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: returning=%s, errno=%d\n", __FILE__, __LINE__, resolved, serrno));
                         errno = serrno;
                         return (resolved);
                     }
+                    khwerrno = errno;
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: returning NULL, errno=%d\n", __FILE__, __LINE__, errno));
+                    errno = khwerrno;
                     return (NULL);
                 }
                 if (S_ISLNK(sb.st_mode)) {
                     int slen;
                     char symlink[MAXPATHLEN];
 
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: symlinks=%d, MAX=%d\n", __FILE__, __LINE__, symlinks+1, MAXSYMLINKS));
                     if (symlinks++ > MAXSYMLINKS) {
                         errno = ELOOP;
                         return (NULL);
                     }
                     slen = readlink(resolved, symlink, sizeof(symlink) - 1);
+                    khwerrno = errno;
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: readlink(%s) returned %d\n", __FILE__, __LINE__, resolved, slen));
+                    errno = khwerrno;
                     if (slen < 0)
                         return (NULL);
                     symlink[slen] = '\0';
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: symlink=%s\n", __FILE__, __LINE__, symlink));
                     if (symlink[0] == '/') {
                         resolved[1] = 0;
                         resolved_len = 1;
@@ -201,6 +224,7 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                     if (p != NULL) {
                         if (symlink[slen - 1] != '/') {
                             if ((STRLEN)(slen + 1) >= (STRLEN)sizeof(symlink)) {
+                                DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: too long, %d >= %d MAX=%d\n", __FILE__, __LINE__, (unsigned) slen+1, (unsigned) sizeof(symlink), MAXPATHLEN));
                                 errno = ENAMETOOLONG;
                                 return (NULL);
                             }
@@ -209,11 +233,13 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                         }
                         left_len = my_strlcat(symlink, left, sizeof(symlink));
                         if (left_len >= sizeof(left)) {
+                            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: too long, %d >= %d MAX=%d\n", __FILE__, __LINE__, (unsigned) left_len, (unsigned) sizeof(left), MAXPATHLEN));
                             errno = ENAMETOOLONG;
                             return (NULL);
                         }
                     }
                     left_len = my_strlcpy(left, symlink, sizeof(left));
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: left=%s\n", __FILE__, __LINE__, left));
                 }
             }
 #endif
@@ -225,6 +251,7 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
 	 */
 	if (resolved_len > 1 && resolved[resolved_len - 1] == '/')
             resolved[resolved_len - 1] = '\0';
+        DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: returning=%s\n", __FILE__, __LINE__, resolved));
 	return (resolved);
 }
 #endif
