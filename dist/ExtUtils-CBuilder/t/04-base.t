@@ -225,9 +225,9 @@ is_deeply( \%split_seen, \%exp,
     $cwd = cwd();
     my $tdir = tempdir(CLEANUP => 1);
     my $subdir = File::Spec->catdir(
-        $tdir, qw| alpha beta gamma delta epsilon
-            zeta eta theta iota kappa lambda |
+        $tdir, qw| alpha beta gamma delta epsilon |
     );
+            #zeta eta theta iota kappa lambda |
     mkpath($subdir, { mode => 0711 } );
     chdir $subdir
         or die "Unable to change to temporary directory for testing";
