@@ -78,11 +78,11 @@ char *
 bsd_realpath(const char *path, char resolved[MAXPATHLEN])
 {
 	char *p, *q, *s;
-	size_t left_len, resolved_len;
+	size_t remaining_len, resolved_len;
 	unsigned symlinks;
 	int serrno;
         int khwerrno;
-	char left[MAXPATHLEN], next_token[MAXPATHLEN];
+	char remaining[MAXPATHLEN], next_token[MAXPATHLEN];
         dTHX;
 
 	serrno = errno;
@@ -95,8 +95,8 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
             if (path[1] == '\0')
                     return (resolved);
             resolved_len = 1;
-            left_len = my_strlcpy(left, path + 1, sizeof(left));
-            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: left_len=%d, left=%s\n", __FILE__, __LINE__, (unsigned) left_len, left));
+            remaining_len = my_strlcpy(remaining, path + 1, sizeof(remaining));
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: remaining_len=%d, remaining=%s\n", __FILE__, __LINE__, (unsigned) remaining_len, remaining));
 	} else {
             if (getcwd(resolved, MAXPATHLEN) == NULL) {
                 DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Couldn't getcwd(), MAX=%d\n", __FILE__, __LINE__, MAXPATHLEN));
@@ -105,36 +105,38 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
             }
             DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: getcwd() returned=%s\n", __FILE__, __LINE__, resolved));
             resolved_len = strlen(resolved);
-            left_len = my_strlcpy(left, path, sizeof(left));
+            remaining_len = my_strlcpy(remaining, path, sizeof(remaining));
 	}
-	if (left_len >= sizeof(left) || resolved_len >= MAXPATHLEN) {
-            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long left_len%d, sizeof(left)=%d, resolved_len=%d, MAX=%d\n", __FILE__, __LINE__, (unsigned) left_len, (unsigned) sizeof(left), (unsigned) resolved_len, MAXPATHLEN));
+	if (remaining_len >= sizeof(remaining) || resolved_len >= MAXPATHLEN) {
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long remaining_len%d, sizeof(remaining)=%d, resolved_len=%d, MAX=%d\n", __FILE__, __LINE__, (unsigned) remaining_len, (unsigned) sizeof(remaining), (unsigned) resolved_len, MAXPATHLEN));
             errno = ENAMETOOLONG;
             return (NULL);
 	}
 
 	/*
-	 * Iterate over path components in 'left'.
+	 * Iterate over path components in 'remaining'.
 	 */
-	while (left_len != 0) {
-            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: left=%s\n", __FILE__, __LINE__, left));
+	while (remaining_len != 0) {
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: resolved='%s', remaining='%s'\n", __FILE__, __LINE__, resolved, remaining));
+
             /*
-             * Extract the next path component and adjust 'left'
+             * Extract the next path component and adjust 'remaining'
              * and its length.
              */
-            p = strchr(left, '/');
-            s = p ? p : left + left_len;
-            if ((STRLEN)(s - left) >= (STRLEN)sizeof(next_token)) {
-                DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long: sizeof(s-left)=%d, sizeof(next_token)=%d, MAX=%d\n", __FILE__, __LINE__, (unsigned) sizeof(s-left), (unsigned) sizeof(next_token), MAXPATHLEN));
+
+            p = strchr(remaining, '/');
+            s = p ? p : remaining + remaining_len;
+            if ((STRLEN)(s - remaining) >= (STRLEN)sizeof(next_token)) {
+                DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long: sizeof(s-remaining)=%d, sizeof(next_token)=%d, MAX=%d\n", __FILE__, __LINE__, (unsigned) sizeof(s-remaining), (unsigned) sizeof(next_token), MAXPATHLEN));
                 errno = ENAMETOOLONG;
                 return (NULL);
             }
-            memcpy(next_token, left, s - left);
-            next_token[s - left] = '\0';
+            memcpy(next_token, remaining, s - remaining);
+            next_token[s - remaining] = '\0';
             DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: cur_token=%s\n", __FILE__, __LINE__, next_token));
-            left_len -= s - left;
+            remaining_len -= s - remaining;
             if (p != NULL)
-                memmove(left, s + 1, left_len + 1);
+                memmove(remaining, s + 1, remaining_len + 1);
             if (resolved[resolved_len - 1] != '/') {
                 if (resolved_len + 1 >= MAXPATHLEN) {
                     DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: Path too long: %d, MAX=%d\n", __FILE__, __LINE__, (unsigned) resolved_len, MAXPATHLEN));
@@ -219,7 +221,7 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                     /*
                      * If there are any path components left, then
                      * append them to symlink. The result is placed
-                     * in 'left'.
+                     * in 'remaining'.
                      */
                     if (p != NULL) {
                         if (symlink[slen - 1] != '/') {
@@ -231,15 +233,15 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                             symlink[slen] = '/';
                             symlink[slen + 1] = 0;
                         }
-                        left_len = my_strlcat(symlink, left, sizeof(symlink));
-                        if (left_len >= sizeof(left)) {
-                            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: too long, %d >= %d MAX=%d\n", __FILE__, __LINE__, (unsigned) left_len, (unsigned) sizeof(left), MAXPATHLEN));
+                        remaining_len = my_strlcat(symlink, remaining, sizeof(symlink));
+                        if (remaining_len >= sizeof(remaining)) {
+                            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: too long, %d >= %d MAX=%d\n", __FILE__, __LINE__, (unsigned) remaining_len, (unsigned) sizeof(remaining), MAXPATHLEN));
                             errno = ENAMETOOLONG;
                             return (NULL);
                         }
                     }
-                    left_len = my_strlcpy(left, symlink, sizeof(left));
-                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: left=%s\n", __FILE__, __LINE__, left));
+                    remaining_len = my_strlcpy(remaining, symlink, sizeof(remaining));
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: remaining=%s\n", __FILE__, __LINE__, remaining));
                 }
             }
 #endif
