@@ -181,6 +181,9 @@ struct RExC_state_t {
     I32		contains_locale;
     I32		contains_i;
     I32		override_recoding;
+#ifdef EBCDIC
+    I32		recode_x_to_native;
+#endif
     I32		in_multi_char_class;
     struct reg_code_block *code_blocks;	/* positions of literal (?{})
 					    within pattern */
@@ -256,6 +259,9 @@ struct RExC_state_t {
 #define RExC_contains_locale	(pRExC_state->contains_locale)
 #define RExC_contains_i (pRExC_state->contains_i)
 #define RExC_override_recoding (pRExC_state->override_recoding)
+#ifdef EBCDIC
+#   define RExC_recode_x_to_native (pRExC_state->recode_x_to_native)
+#endif
 #define RExC_in_multi_char_class (pRExC_state->in_multi_char_class)
 #define RExC_frame_head (pRExC_state->frame_head)
 #define RExC_frame_last (pRExC_state->frame_last)
@@ -6632,6 +6638,9 @@ Perl_re_op_compile(pTHX_ SV ** const patternp, int pat_count,
     RExC_seen_zerolen = *exp == '^' ? -1 : 0;
     RExC_extralen = 0;
     RExC_override_recoding = 0;
+#ifdef EBCDIC
+    RExC_recode_x_to_native = 0;
+#endif
     RExC_in_multi_char_class = 0;
 
     /* First pass: determine size, legality. */
@@ -10995,7 +11004,9 @@ S_regpiece(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth)
 
 STATIC STRLEN
 S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
-                      UV *valuep, I32 *flagp, U32 depth, SV** substitute_parse
+                      UV *valuep, I32 *flagp, U32 depth,
+                      bool handle_multiple_chars
+                      /*SV** substitute_parse*/
     )
 {
 
@@ -11080,7 +11091,7 @@ S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
                            stream */
     bool has_multiple_chars; /* true if the input stream contains a sequence of
                                 more than one character */
-    bool in_char_class = substitute_parse != NULL;
+    bool in_char_class = ! handle_multiple_chars;
     STRLEN count = 0;   /* Number of characters in this sequence */
 
     GET_RE_DEBUG_FLAGS_DECL;
@@ -11090,7 +11101,7 @@ S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
     GET_RE_DEBUG_FLAGS;
 
     assert(cBOOL(node_p) ^ cBOOL(valuep));  /* Exactly one should be set */
-    assert(! (node_p && substitute_parse)); /* At most 1 should be set */
+    /*assert(! (node_p && substitute_parse)); /* At most 1 should be set */
 
     /* The [^\n] meaning of \N ignores spaces and comments under the /x
      * modifier.  The other meaning does not, so use a temporary until we find
@@ -11165,8 +11176,8 @@ S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
     has_multiple_chars = (endchar < endbrace);
 
     /* We get the first code point if we want it, and either there is only one,
-     * or we can accept both cases of one and there is more than one */
-    if (valuep && (substitute_parse || ! has_multiple_chars)) {
+     * or we can accept both cases of: a) just one, and b) more than one */
+    if (valuep && (! has_multiple_chars || handle_multiple_chars)) {
 	STRLEN length_of_hex = (STRLEN)(endchar - RExC_parse);
 	I32 grok_hex_flags = PERL_SCAN_ALLOW_UNDERSCORES
                            | PERL_SCAN_DISALLOW_PREFIX
@@ -11178,7 +11189,13 @@ S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
                               ? PERL_SCAN_SILENT_ILLDIGIT
                               : 0);
 
-	*valuep = grok_hex(RExC_parse, &length_of_hex, &grok_hex_flags, NULL);
+        /* This routine is the one place where both single- and double-quotish
+         * \N{U+xxxx} are evaluated.  The value is a Unicode code point which
+         * must be converted to native. */
+	*valuep = UNI_TO_NATIVE(grok_hex(RExC_parse,
+                                         &length_of_hex,
+                                         &grok_hex_flags,
+                                         NULL));
 
 	/* The tokenizer should have guaranteed validity, but it's possible to
          * bypass it by using single quoting, so check.  Don't do the check
@@ -11208,42 +11225,42 @@ S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
      * multiple chars and got them; or didn't get them but wanted them.  We
      * fail without advancing the parse, so that the caller can try again with
      * different acceptance criteria */
-    if ((! node_p && ! substitute_parse) || ! has_multiple_chars) {
+    if ((! node_p && handle_multiple_chars) || ! has_multiple_chars) {
         RExC_parse = p;
         return (STRLEN) -1;
     }
 
-    {
-	/* What is done here is to convert this to a sub-pattern of the form
-	 * \x{char1}\x{char2}...
-         * and then either return it in <*substitute_parse> if non-null; or
-         * call reg recursively to parse it (enclosing in "(?: ... )" ).  That
-         * way, it retains its atomicness, while not having to worry about
-         * special handling that some code points may have.  toke.c has
-         * converted the original Unicode values to native, so that we can just
-         * pass on the hex values unchanged.  We do have to set a flag to keep
-         * recoding from happening in the recursion */
 
-	SV * dummy = NULL;
+    if (in_char_class) {
+	while (RExC_parse < endbrace) {
+	    /* Point to the beginning of the next character in the sequence. */
+	    RExC_parse = endchar + 1;
+	    endchar = RExC_parse + strcspn(RExC_parse, ".}");
+            count++;
+        }
+        return count;
+    }
+    else {
+	/* What is done here is to convert this to a sub-pattern of the form
+         * \x{char1}\x{char2}...  and then call reg recursively to parse it
+         * (enclosing in "(?: ... )" ).  That way, it retains its atomicness,
+         * while not having to worry about special handling that some code
+         * points may have.
+         *
+         * We do have to set a flag to keep recoding from happening in the
+         * recursion */
+
+	SV * substitute_parse = newSVpvs("?:");
 	STRLEN len;
 	char *orig_end = RExC_end;
         I32 flags;
 
-        if (substitute_parse) {
-            *substitute_parse = newSVpvs("");
-        }
-        else {
-            substitute_parse = &dummy;
-            *substitute_parse = newSVpvs("?:");
-        }
-        *substitute_parse = sv_2mortal(*substitute_parse);
-
 	while (RExC_parse < endbrace) {
 
 	    /* Convert to notation the rest of the code understands */
-	    sv_catpv(*substitute_parse, "\\x{");
-	    sv_catpvn(*substitute_parse, RExC_parse, endchar - RExC_parse);
-	    sv_catpv(*substitute_parse, "}");
+	    sv_catpv(substitute_parse, "\\x{");
+	    sv_catpvn(substitute_parse, RExC_parse, endchar - RExC_parse);
+	    sv_catpv(substitute_parse, "}");
 
 	    /* Point to the beginning of the next character in the sequence. */
 	    RExC_parse = endchar + 1;
@@ -11251,21 +11268,24 @@ S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
 
             count++;
 	}
-        if (! in_char_class) {
-            sv_catpv(*substitute_parse, ")");
-        }
+        sv_catpv(substitute_parse, ")");
 
-	RExC_parse = SvPV(*substitute_parse, len);
+	RExC_parse = SvPV(substitute_parse, len);
 
 	/* Don't allow empty number */
-	if (len < (STRLEN) ((substitute_parse) ? 6 : 8)) {
+	if (len < (STRLEN) 8) {
             RExC_parse = endbrace;
 	    vFAIL("Invalid hexadecimal number in \\N{U+...}");
 	}
 	RExC_end = RExC_parse + len;
 
-	/* The values are Unicode, and therefore not subject to recoding */
+        /* The values are Unicode, and therefore not subject to recoding, but
+         * have to be converted to native on a non-Unicode (meaning non-ASCII)
+         * platform. */
 	RExC_override_recoding = 1;
+#ifdef EBCDIC
+        RExC_recode_x_to_native = 1;
+#endif
 
         if (node_p) {
             if (!(*node_p = reg(pRExC_state, 1, &flags, depth+1))) {
@@ -11282,7 +11302,11 @@ S_grok_bslash_N(pTHX_ RExC_state_t *pRExC_state, regnode** node_p,
 	RExC_parse = endbrace;
 	RExC_end = orig_end;
 	RExC_override_recoding = 0;
+#ifdef EBCDIC
+        RExC_recode_x_to_native = 0;
+#endif
 
+        SvREFCNT_dec_NN(substitute_parse);
         nextchar(pRExC_state);
     }
 
@@ -11907,7 +11931,7 @@ S_regatom(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth)
              * character sequences */
             ++RExC_parse;
             if ((STRLEN) -1 == grok_bslash_N(pRExC_state, &ret, NULL, flagp,
-                                             depth, FALSE))
+                                             depth, TRUE))
             {
                 if (*flagp & RESTART_UTF8)
                     return NULL;
@@ -12231,7 +12255,7 @@ S_regatom(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth)
                                                          &ender,
                                                          flagp,
                                                          depth,
-                                                         FALSE
+                                                         TRUE
                         )) {
                             if (*flagp & RESTART_UTF8)
                                 FAIL("panic: grok_bslash_N set RESTART_UTF8");
@@ -12313,10 +12337,18 @@ S_regatom(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth)
 			    }
                             ender = result;
 
-			    if (IN_ENCODING && ender < 0x100) {
-				goto recode_encoding;
+                            if (ender < 0x100) {
+#ifdef EBCDIC
+                                if (RExC_recode_x_to_native) {
+                                    ender = LATIN1_TO_NATIVE(ender);
+                                }
+                                else
+#endif
+                                if (IN_ENCODING) {
+                                    goto recode_encoding;
+                                }
 			    }
-			    if (ender > 0xff) {
+                            else {
 				REQUIRE_UTF8;
 			    }
 			    break;
@@ -13992,9 +14024,9 @@ S_regclass(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth,
 	    case 'H':	namedclass = ANYOF_NHORIZWS;	break;
             case 'N':  /* Handle \N{NAME} in class */
                 {
-                    SV *as_text;
+                    const char * const backslash_N_beg = RExC_parse - 2;
                     STRLEN cp_count = grok_bslash_N(pRExC_state, NULL, &value,
-                                                    flagp, depth, &as_text);
+                                                    flagp, depth, FALSE);
                     if (*flagp & RESTART_UTF8)
                         FAIL("panic: grok_bslash_N set RESTART_UTF8");
                     if (cp_count != 1) {    /* The typical case drops through */
@@ -14021,9 +14053,11 @@ S_regclass(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth,
                                     }
                                 }
                                 else {
+                                    SV * multi_char_N = newSVpvn(backslash_N_beg,
+                                                 RExC_parse - backslash_N_beg);
                                     multi_char_matches
                                         = add_multi_match(multi_char_matches,
-                                                          as_text,
+                                                          multi_char_N,
                                                           cp_count);
                                 }
                                 break; /* <value> contains the first code

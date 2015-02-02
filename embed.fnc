@@ -2146,7 +2146,7 @@ Es	|regnode*|regpiece	|NN RExC_state_t *pRExC_state \
 Es	|STRLEN	|grok_bslash_N	|NN RExC_state_t *pRExC_state		    \
 				|NULLOK regnode** nodep|NULLOK UV *valuep   \
 				|NN I32 *flagp|U32 depth		    \
-				|NULLOK SV** substitute_parse
+				|bool handle_multiple_chars
 Es	|void	|reginsert	|NN RExC_state_t *pRExC_state \
 				|U8 op|NN regnode *opnd|U32 depth
 Es	|void	|regtail	|NN RExC_state_t *pRExC_state \

@@ -996,7 +996,11 @@ sub run_tests {
         my $w;
         local $SIG {__WARN__} = sub {$w .= "@_"};
         $result = eval 'q(WARN) =~ /[\N{WARN}]/';
-        ok !$@ && $result && ! $w,  '\N{} returning multi-char works';
+        if (! ok !$@ && $result && ! $w,  '\N{} returning multi-char works') {
+            print STDERR __FILE__, ": ", __LINE__, ": \$@='$@', result='$result', w='$w'\n";
+            use re qw(Debug COMPILE);
+            eval "qr/[\\N{WARN}]/";
+        }
 
         undef $w;
         eval q [ok "\0" !~ /[\N{EMPTY-STR}XY]/,
