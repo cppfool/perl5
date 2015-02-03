@@ -21,6 +21,9 @@
 #   include <unistd.h>
 #endif
 
+#define SYSNAME "$SYSNAME"
+#define SYSNAME_LEN (sizeof(SYSNAME) - 1)
+
 /* The realpath() implementation from OpenBSD 3.9 to 4.2 (realpath.c 1.13)
  * Renamed here to bsd_realpath() to avoid library conflicts.
  */
@@ -133,7 +136,7 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
             }
             memcpy(next_token, remaining, s - remaining);
             next_token[s - remaining] = '\0';
-            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: cur_token=%s\n", __FILE__, __LINE__, next_token));
+            DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: next_token=%s\n", __FILE__, __LINE__, next_token));
             remaining_len -= s - remaining;
             if (p != NULL)
                 memmove(remaining, s + 1, remaining_len + 1);
@@ -190,7 +193,7 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                     errno = khwerrno;
                     return (NULL);
                 }
-                if (S_ISLNK(sb.st_mode)) {
+                if (/*strEQ(resolved, "/foo") || */ S_ISLNK(sb.st_mode)) {
                     int slen;
                     char symlink[MAXPATHLEN];
 
@@ -199,6 +202,12 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                         errno = ELOOP;
                         return (NULL);
                     }
+                    /*if (strEQ(resolved, "/foo")) {
+                        strcpy(symlink, SYSNAME);
+                        strcat(symlink, resolved);
+                        slen = strlen(symlink);
+                    } else
+                    */
                     slen = readlink(resolved, symlink, sizeof(symlink) - 1);
                     khwerrno = errno;
                     DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: readlink(%s) returned %d\n", __FILE__, __LINE__, resolved, slen));
@@ -207,6 +216,21 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                         return (NULL);
                     symlink[slen] = '\0';
                     DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: symlink=%s\n", __FILE__, __LINE__, symlink));
+/*#ifdef EBCDIC /* os390 XXX */
+                    DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: slen=%d, SYSNAME_LEN=%d, next_token_len=%d\n", __FILE__, __LINE__, (int) slen, SYSNAME_LEN, (int) strlen(next_token)));
+                    if (slen > SYSNAME_LEN + strlen(next_token)) {
+                        DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: *(symlink + SYSNAME_LEN)=%x\n", __FILE__, __LINE__, *(symlink + SYSNAME_LEN)));
+                        DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: symlink + SYSNAME_LEN=%s\n", __FILE__, __LINE__, symlink + SYSNAME_LEN));
+                    }
+                    if (slen > SYSNAME_LEN + strlen(next_token)
+                        && strnEQ(symlink, SYSNAME, SYSNAME_LEN)
+                        && *(symlink + SYSNAME_LEN) == '/'
+                        && strEQ(symlink + SYSNAME_LEN + 1, next_token))
+                    {
+                        goto not_symlink;
+                    }
+/*#endif
+*/
                     if (symlink[0] == '/') {
                         resolved[1] = 0;
                         resolved_len = 1;
@@ -243,6 +267,7 @@ bsd_realpath(const char *path, char resolved[MAXPATHLEN])
                     remaining_len = my_strlcpy(remaining, symlink, sizeof(remaining));
                     DEBUG_U(PerlIO_printf(Perl_debug_log, "%s: %d: remaining=%s\n", __FILE__, __LINE__, remaining));
                 }
+              not_symlink: ;
             }
 #endif
 	}
