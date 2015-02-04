@@ -816,6 +816,8 @@ sub _can_do_level {
       unless scalar(@_) == 3;
 
     my ($fh, $fname, $isdir) = @_;
+    use Data::Dumper;
+    print STDERR __FILE__, ": ", __LINE__, ": called from line ", (caller)[2], "\n", Dumper \@_;
 
     warn "Setting up deferred removal of $fname\n"
       if $DEBUG;
@@ -823,7 +825,16 @@ sub _can_do_level {
     # make sure we save the absolute path for later cleanup
     # OK to untaint because we only ever use this internally
     # as a file path, never interpolating into the shell
+    print STDERR __FILE__, ": ", __LINE__, ": fname=$fname\n";
+    $! = 0;
+    my $sav_fname = $fname;
     $fname = Cwd::abs_path($fname);
+    unless ($fname) {
+        my $errno = $!;
+        print STDERR __FILE__, ": ", __LINE__, ": Cwd::abs_path($sav_fname) returned nothing, errno=", 0+$errno, "=$errno\n";
+        $fname = $sav_fname if $sav_fname =~ m!^/!;
+    }
+
     ($fname) = $fname =~ /^(.*)$/;
 
     # If we have a directory, check that it is a directory
@@ -1222,6 +1233,7 @@ sub tempdir  {
                                          "ErrStr" => \$errstr,
                                         ) );
 
+  print STDERR __FILE__, ": ", __LINE__, ": template=$template; tempdir=$tempdir\n";
   # Install exit handler; must be dynamic to get lexical
   if ( $options{'CLEANUP'} && -d $tempdir) {
     _deferred_unlink(undef, $tempdir, 1);
