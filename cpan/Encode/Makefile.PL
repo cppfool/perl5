@@ -16,6 +16,7 @@ my %tables =
     (
      def_t => ['ascii.ucm',
            '8859-1.ucm',
+           'cp1252.ucm',
            'null.ucm',
            'ctrl.ucm',
            ]
