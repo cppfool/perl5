@@ -42,7 +42,9 @@ if( $guess ) {
       ok 1;
     } else {
       ok 0;
-      print STDERR "# failed to find expected control character in output\n"
+      print STDERR "# failed to find expected control character in output\n";
+      print STDERR join " XXX ", @output_lines;
+      print STDERR "\n";
     }
   } else {
     ok 0;
