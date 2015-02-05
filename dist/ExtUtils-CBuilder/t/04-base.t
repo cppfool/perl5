@@ -225,9 +225,9 @@ is_deeply( \%split_seen, \%exp,
     $cwd = cwd();
     my $tdir = tempdir(CLEANUP => 1);
     my $subdir = File::Spec->catdir(
-        $tdir, qw| alpha beta gamma delta epsilon |
+        $tdir, qw| alpha beta gamma delta epsilon
+            zeta eta theta iota kappa lambda |
     );
-            #zeta eta theta iota kappa lambda |
     mkpath($subdir, { mode => 0711 } );
     chdir $subdir
         or die "Unable to change to temporary directory for testing";
@@ -269,10 +269,20 @@ is_deeply( \%split_seen, \%exp,
     my $rp = Cwd::realpath($subdir);
     print STDERR __FILE__, ": ", __LINE__, ": rv='$rv'; rp='$rp'; subdir='$subdir'\n";
   SKIP: {
+      # XXX Depends on Cwd
       if ($^O eq 'dec_osf' && $rp =~ m[^/cluster/members/]) {
           skip "Tru64 cluster filesystem", 1;
       } # SKIP
-      is( uc($rv), uc($rp), "perl_src(): identified directory" );
+      elsif ($^O eq 'os390') {
+        # os390 also has cluster-like things called 'sysplexed'.  So far, the
+        # tail end of the path matches what we passed it (with some prepended
+        # directories).  So test for that.  But it may be that this test
+        # should just be skipped there.
+        like( uc($rp), qr/\U\Q$rp\E$/, "perl_src(): identified directory" );
+      }
+      else {
+        is( uc($rv), uc($rp), "perl_src(): identified directory" );
+      }
     }
     is( $capture, q{}, "perl_src(): no warning, as expected" );
 
