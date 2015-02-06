@@ -44,7 +44,6 @@ sub TEST {
     : "not ok $TNUM$name\n--Expected--\n$WANT\n--Got--\n$@$t\n");
 
   ++$TNUM;
-  print STDERR __FILE__, ": ", __LINE__, ": TNUM='", $TNUM, "'\n";
   if (0 && $Is_ebcdic) { # EBCDIC.
     if ($TNUM == 311 || $TNUM == 314) {
       eval $string;
