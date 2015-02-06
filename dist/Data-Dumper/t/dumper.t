@@ -1,5 +1,4 @@
 #!./perl -w
-$|=1;
 #
 # testsuite for Data::Dumper
 #
@@ -28,9 +27,7 @@ my $WANT = '';
 sub TEST {
   my $string = shift;
   my $name = shift;
-  print STDERR __FILE__, ": ", __LINE__, ": string='", $string, "'; name='", $name, "'\n";
   my $t = eval $string;
-  print STDERR __FILE__, ": ", __LINE__, ": t='", $t, "'\n";
   ++$TNUM;
   $t =~ s/([A-Z]+)\(0x[0-9a-f]+\)/$1(0xdeadbeef)/g
     if ($WANT =~ /deadbeef/);
@@ -42,8 +39,6 @@ sub TEST {
     $t    = join("\n",sort(split(/\n/,$t)));
     $t    =~ s/\,$//mg;
   }
-  print STDERR __FILE__, ": ", __LINE__, ": t=«", $t, "»\n";
-  print STDERR __FILE__, ": ", __LINE__, ": WANT='", $WANT, "'\n";
   $name = $name ? " - $name" : '';
   print( ($t eq $WANT and not $@) ? "ok $TNUM$name\n"
     : "not ok $TNUM$name\n--Expected--\n$WANT\n--Got--\n$@$t\n");
@@ -52,10 +47,8 @@ sub TEST {
   print STDERR __FILE__, ": ", __LINE__, ": TNUM='", $TNUM, "'\n";
   if (0 && $Is_ebcdic) { # EBCDIC.
     if ($TNUM == 311 || $TNUM == 314) {
-        print STDERR __FILE__, ": ", __LINE__, ": TNUM='", $TNUM, "'\n";
       eval $string;
     } else {
-        print STDERR __FILE__, ": ", __LINE__, ": TNUM='", $TNUM, "'\n";
       eval $t;
     }
   } else {
