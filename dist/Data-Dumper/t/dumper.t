@@ -31,7 +31,7 @@ sub TEST {
   ++$TNUM;
   $t =~ s/([A-Z]+)\(0x[0-9a-f]+\)/$1(0xdeadbeef)/g
     if ($WANT =~ /deadbeef/);
-  if ($Is_ebcdic) {
+  if (0 && $Is_ebcdic) {
     # these data need massaging with non ascii character sets
     # because of hashing order differences
     $WANT = join("\n",sort(split(/\n/,$WANT)));
@@ -44,7 +44,8 @@ sub TEST {
     : "not ok $TNUM$name\n--Expected--\n$WANT\n--Got--\n$@$t\n");
 
   ++$TNUM;
-  if ($Is_ebcdic) { # EBCDIC.
+  print STDERR __FILE__, ": ", __LINE__, ": TNUM='", $TNUM, "'\n";
+  if (0 && $Is_ebcdic) { # EBCDIC.
     if ($TNUM == 311 || $TNUM == 314) {
       eval $string;
     } else {
@@ -59,7 +60,7 @@ sub TEST {
   ++$TNUM;
   $t =~ s/([A-Z]+)\(0x[0-9a-f]+\)/$1(0xdeadbeef)/g
     if ($WANT =~ /deadbeef/);
-  if ($Is_ebcdic) {
+  if (0 && $Is_ebcdic) {
     # here too there are hashing order differences
     $WANT = join("\n",sort(split(/\n/,$WANT)));
     $WANT =~ s/\,$//mg;
