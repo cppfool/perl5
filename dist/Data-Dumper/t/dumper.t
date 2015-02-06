@@ -101,10 +101,17 @@ else {
 
 print "1..$TMAX\n";
 
+# 131073 without verbose
+BEGIN { $^D = 1179649;  }
 
 ############# 310
 ## Perl code was using /...$/ and hence missing the \n.
+#  $WANT = <<'EOT';
+#my $VAR1 = '1000052
+#';
+#EOT
 
   # Can't pad with # as the output has an embedded newline.
   local $Data::Dumper::Pad = "my ";
   TEST q(Data::Dumper->Dump(["42\n"])), "number with trailing newline";
+  #TEST q(Data::Dumper->Dumpxs(["42\n"])), "XS number with trailing newline" if $XS;
