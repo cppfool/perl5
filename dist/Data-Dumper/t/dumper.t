@@ -56,6 +56,7 @@ sub TEST {
       eval $string;
     } else {
         print STDERR __FILE__, ": ", __LINE__, ": TNUM='", $TNUM, "'\n";
+        eval "$t";
       eval $t;
     }
   } else {
