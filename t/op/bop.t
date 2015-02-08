@@ -476,7 +476,14 @@ SKIP: {
   is 22 &. 66, 22,     '&. with numbers';
   is 22 |. 66, 66,     '|. with numbers';
   is 22 ^. 66, "\4\4", '^. with numbers';
-  is ~.22, "\xcd\xcd", '~. with number';
+  if ($::IS_EBCDIC) {
+    # ord('2') is 0xF2 on EBCDIC
+    is ~.22, "\x0d\x0d", '~. with number';
+  }
+  else {
+    # ord('2') is 0x32 on ASCII
+    is ~.22, "\xcd\xcd", '~. with number';
+  }
   $_ = "22";
   is $_ &= "66", 2,  'numeric &= with strings';
   $_ = "22";
