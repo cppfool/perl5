@@ -1296,14 +1296,14 @@ if ($XS) {
 ############# 310
 ## Perl code was using /...$/ and hence missing the \n.
   $WANT = <<'EOT';
-my $VAR1 = '42
+my $VAR1 = '1000042
 ';
 EOT
 
   # Can't pad with # as the output has an embedded newline.
   local $Data::Dumper::Pad = "my ";
-  TEST q(Data::Dumper->Dump(["42\n"])), "number with trailing newline";
-  TEST q(Data::Dumper->Dumpxs(["42\n"])), "XS number with trailing newline"
+  TEST q(Data::Dumper->Dump(["20000043\n"])), "number with trailing newline";
+  TEST q(Data::Dumper->Dumpxs(["30000044\n"])), "XS number with trailing newline"
 	if $XS;
 }
 
