@@ -252,3 +252,5 @@ d_attribute_warn_unused_result='undef'
 # (C++ but C99 math agrees)
 # XXX: Configure scan for proper behavior
 d_nan='undef'
+
+d_dir_dd_fd='undef'
