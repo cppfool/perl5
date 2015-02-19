@@ -31,6 +31,8 @@ grok_number_flags(number, flags)
 	if (result & IS_NUMBER_IN_UV)
 	    PUSHs(sv_2mortal(newSVuv(value)));
 
+#if 0
+
 void
 grok_atou(number, endsv)
 	SV *number
@@ -57,3 +59,6 @@ grok_atou(number, endsv)
 	    PUSHs(sv_2mortal(newSViv(0)));
 	  }
 	}
+
+#endif
+
