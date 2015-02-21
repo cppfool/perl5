@@ -708,7 +708,7 @@ Do not assume any portability of the NaN semantics.
 =cut
 */
 void
-Perl_nan_payload_set(pTHX_ NV *nvp, SV* svp, const void *bytes, STRLEN byten, bool signaling)
+Perl_nan_payload_set(pTHX_ NV *nvp, const void *bytes, STRLEN byten, bool signaling)
 {
     /* How many bits we can set in the payload.
      *
@@ -772,11 +772,6 @@ Perl_nan_payload_set(pTHX_ NV *nvp, SV* svp, const void *bytes, STRLEN byten, bo
     } else {
         *hibyte &= ~mask;
     }
-    if (overflow) {
-        if (svp) {
-            sv_setpvf(svp, "NaN payload overflowed %d bits", NV_NAN_BITS);
-        }
-    }
     nan_signaling_set(nvp, signaling);
 }
 
@@ -792,14 +787,13 @@ If you want the parse the "nan" part you need to use grok_nan().
 =cut
 */
 const char *
-Perl_grok_nan_payload(pTHX_ const char* s, const char* send, bool signaling, int *flags, NV* nvp, SV* svp)
+Perl_grok_nan_payload(pTHX_ const char* s, const char* send, bool signaling, int *flags, NV* nvp)
 {
     U8 bytes[MAX_NV_BYTES];
     STRLEN byten = 0;
     const char *t = send - 1; /* minus one for ')' */
     bool overflow = FALSE;
     bool bogus = FALSE;
-    const char *orig = s;
 
     PERL_ARGS_ASSERT_GROK_NAN_PAYLOAD;
 
@@ -810,7 +804,7 @@ Perl_grok_nan_payload(pTHX_ const char* s, const char* send, bool signaling, int
 
     if (*t != ')') {
         U8 bytes[1] = { 0 };
-        nan_payload_set(nvp, svp, bytes, 1, signaling);
+        nan_payload_set(nvp, bytes, 1, signaling);
         return t;
     }
 
@@ -929,22 +923,18 @@ Perl_grok_nan_payload(pTHX_ const char* s, const char* send, bool signaling, int
         bytes[byten++] = 0;
     }
 
-    if (svp) {
-        if (bogus) {
-            sv_setpvf(svp, "NaN payload \"%s\" invalid",orig);
-        } else if (overflow) {
-            sv_setpvf(svp, "NaN payload \"%s\" overflowed %d bits",
-                      orig, NV_NAN_BITS);
-        }
+    /* The bogus and overflow flags are currently unseen outside,
+     * except indirectly via the IS_NUMBER_TRAILING in the *flags. */
+    if (s == send || bogus || overflow) {
+        *flags |= IS_NUMBER_TRAILING;
     }
 
     if (s == send) {
-        *flags |= IS_NUMBER_TRAILING;
         return s;
     }
 
     if (nvp) {
-        nan_payload_set(nvp, svp, bytes, byten, signaling);
+        nan_payload_set(nvp, bytes, byten, signaling);
     }
 
     return s;
@@ -965,7 +955,7 @@ The "..." is parsed with grok_nan_payload().
 =cut
 */
 const char *
-Perl_grok_nan(pTHX_ const char* s, const char* send, int *flags, NV* nvp, SV* svp)
+Perl_grok_nan(pTHX_ const char* s, const char* send, int *flags, NV* nvp)
 {
     bool signaling = FALSE;
 
@@ -996,7 +986,7 @@ Perl_grok_nan(pTHX_ const char* s, const char* send, int *flags, NV* nvp, SV* sv
         }
 
         if (*s == '(') {
-            const char *n = grok_nan_payload(s, send, signaling, flags, nvp, svp);
+            const char *n = grok_nan_payload(s, send, signaling, flags, nvp);
             if (n == send) return NULL;
             s = n;
             if (*s != ')') {
@@ -1006,7 +996,7 @@ Perl_grok_nan(pTHX_ const char* s, const char* send, int *flags, NV* nvp, SV* sv
         } else {
             if (nvp) {
                 U8 bytes[1] = { 0 };
-                nan_payload_set(nvp, svp, bytes, 1, signaling);
+                nan_payload_set(nvp, bytes, 1, signaling);
             }
 
             while (s < send && isSPACE(*s)) s++;
@@ -1137,7 +1127,7 @@ Perl_grok_infnan(pTHX_ const char** sp, const char* send, NV* nvp)
     }
     else {
         /* Maybe NAN of some sort */
-        const char *n = grok_nan(s, send, &flags, nvp, NULL);
+        const char *n = grok_nan(s, send, &flags, nvp);
         if (n == NULL) return 0;
         s = n;
     }
